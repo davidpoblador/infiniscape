@@ -37,7 +37,7 @@ class App:
         self.shadow_depth = 0.35  # darkest the halo gets (1.0 = no shadow)
         self.frame_budget = 1.0 / fps
         self.running = True
-        self._mask = None
+        self._masks = None
         self._mask_key = None
 
     # --- input -------------------------------------------------------------
@@ -97,16 +97,17 @@ class App:
         self.cam_y = cy - rows
 
     # --- visibility --------------------------------------------------------
-    def _view_mask(self, h: int, w: int) -> np.ndarray:
-        """Cached brightness mask: a far light falloff plus a tight dark halo.
+    def _view_masks(self, h: int, w: int) -> tuple[np.ndarray, np.ndarray]:
+        """Cached (brightness, halo) masks centered on the player.
 
-        The light fades the world to black at the edge of sight; the halo darkens
-        the pixels immediately around the player so the bright player pixel always
-        sits in a little shadow and is easy to spot on any terrain.
+        Brightness fades the world to black at the edge of sight and digs a dark
+        well right around the player. Halo strength (1 at the player, 0 past the
+        shadow radius) is used to desaturate that well toward neutral grey, so the
+        shadow carries no terrain hue and the vivid player pixel never clashes.
         """
         key = (h, w, self.light_radius, self.shadow_radius, self.shadow_depth)
         if key == self._mask_key:
-            return self._mask
+            return self._masks
         yy, xx = np.ogrid[0:h, 0:w]
         dist = np.sqrt((xx - w / 2) ** 2 + (yy - h / 2) ** 2)
 
@@ -115,14 +116,12 @@ class App:
         light = lt * lt * (3.0 - 2.0 * lt)  # smoothstep edge to darkness
 
         st = np.clip(dist / self.shadow_radius, 0.0, 1.0)
-        halo = self.shadow_depth + (1.0 - self.shadow_depth) * (
-            st * st * (3.0 - 2.0 * st)
-        )
+        halo = 1.0 - st * st * (3.0 - 2.0 * st)  # 1 at player, 0 past the radius
 
-        mask = (light * halo)[..., None]
+        bright = light * (1.0 - (1.0 - self.shadow_depth) * halo)
+        self._masks = (bright[..., None], halo[..., None])
         self._mask_key = key
-        self._mask = mask
-        return mask
+        return self._masks
 
     # --- player ------------------------------------------------------------
     @staticmethod
@@ -165,7 +164,11 @@ class App:
         py, px = rows, cols // 2  # player occupies one half-block pixel
         under = rgb[py, px].copy()  # true terrain color, before the shadow halo
 
-        rgb = (rgb * self._view_mask(rows * 2, cols)).astype(np.uint8)
+        bright, halo = self._view_masks(rows * 2, cols)
+        f = rgb.astype(np.float64)
+        grey = (0.2126 * f[..., 0] + 0.7152 * f[..., 1] + 0.0722 * f[..., 2])[..., None]
+        f = f * (1.0 - halo) + grey * halo  # neutral, hue-free shadow near player
+        rgb = np.clip(f * bright, 0, 255).astype(np.uint8)
         rgb[py, px] = self._player_color(under)
 
         frame = render(rgb)
