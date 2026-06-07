@@ -32,12 +32,16 @@ Ghostty, WezTerm, modern Terminal.app, VS Code).
 
 | Key | Action |
 | --- | --- |
-| arrows / `wasd` | move the player |
+| arrows / `wasd` | set heading (combine axes for diagonals) |
+| `space` | stop |
 | `+` / `-` | zoom in / out |
 | `[` / `]` | shrink / grow the light radius |
-| `space` | toggle auto-walk |
 | `h` | toggle the heads-up display |
 | `q` / `Esc` | quit |
+
+Movement is a persistent heading: tap a direction to start drifting that way,
+tap it again to cancel that axis, or press an arrow on the other axis to steer
+diagonally (e.g. go left, then press up to move up-left).
 
 ## How it works
 

@@ -28,9 +28,8 @@ class App:
         self.cam_x = 0.0
         self.cam_y = 0.0
         self.scale = 0.018  # noise units per pixel; smaller = more zoomed in
-        self.drift_x = 0.6  # pixels per frame of auto-walk when enabled
-        self.drift_y = 0.0
-        self.drifting = False
+        self.vx = 0  # current heading, in pixels per frame (-1, 0, or 1)
+        self.vy = 0
         self.show_hud = True
         self.light_radius = 26.0  # lit radius around the player, in pixels
         self.shadow_radius = 4.0  # dark halo hugging the player, in pixels
@@ -64,17 +63,19 @@ class App:
         return tokens
 
     def _handle(self, key: str, cols: int, rows: int) -> None:
-        step = 1.0  # one half-block pixel per keypress
+        # Movement keys set a persistent heading per axis, so going left and
+        # then pressing up keeps the leftward motion and turns it diagonal.
+        # Tapping the current direction again cancels that axis.
         if key in ("q", "\x03", "\x1b"):
             self.running = False
         elif key in ("left", "a"):
-            self.cam_x -= step
+            self.vx = 0 if self.vx == -1 else -1
         elif key in ("right", "d"):
-            self.cam_x += step
+            self.vx = 0 if self.vx == 1 else 1
         elif key in ("up", "w"):
-            self.cam_y -= step
+            self.vy = 0 if self.vy == -1 else -1
         elif key in ("down", "s"):
-            self.cam_y += step
+            self.vy = 0 if self.vy == 1 else 1
         elif key in ("+", "="):
             self._zoom(0.85, cols, rows)
         elif key in ("-", "_"):
@@ -84,9 +85,7 @@ class App:
         elif key == "]":
             self.light_radius = min(400.0, self.light_radius + 4.0)
         elif key == " ":
-            self.drifting = not self.drifting
-        elif key == "h":
-            self.show_hud = not self.show_hud
+            self.vx = self.vy = 0  # stop
 
     def _zoom(self, ratio: float, cols: int, rows: int) -> None:
         """Zoom about the player (view center) so their spot stays put."""
@@ -144,14 +143,26 @@ class App:
         return np.clip(player, 0, 255).astype(np.uint8)
 
     # --- frame -------------------------------------------------------------
+    _HEADINGS = {
+        (0, 0): "·",
+        (-1, 0): "←",
+        (1, 0): "→",
+        (0, -1): "↑",
+        (0, 1): "↓",
+        (-1, -1): "↖",
+        (1, -1): "↗",
+        (-1, 1): "↙",
+        (1, 1): "↘",
+    }
+
     def _hud(self, cols: int, rows: int) -> str:
-        state = "walk" if self.drifting else "still"
+        heading = self._HEADINGS[(self.vx, self.vy)]
         px = int(self.cam_x + cols / 2)
         py = int(self.cam_y + rows)  # player sits at the view center
         text = (
-            f" infiniscape  @ {px:+d},{py:+d}  zoom {1 / self.scale:5.0f}  "
-            f"light {int(self.light_radius)}  {state}  "
-            f"[wasd move  +/- zoom  [ ] light  space walk  h hud  q quit] "
+            f" infiniscape  @ {px:+d},{py:+d}  {heading}  zoom {1 / self.scale:5.0f}  "
+            f"light {int(self.light_radius)}  "
+            f"[wasd/arrows steer  space stop  +/- zoom  [ ] light  h hud  q quit] "
         )[:cols]
         return f"\x1b[1;1H\x1b[7m{text}\x1b[0m"
 
@@ -191,9 +202,8 @@ class App:
                 start = time.monotonic()
                 for key in self._read_keys():
                     self._handle(key, cols, rows)
-                if self.drifting:
-                    self.cam_x += self.drift_x
-                    self.cam_y += self.drift_y
+                self.cam_x += self.vx
+                self.cam_y += self.vy
                 cols, rows = self._draw()
                 elapsed = time.monotonic() - start
                 if elapsed < self.frame_budget:
