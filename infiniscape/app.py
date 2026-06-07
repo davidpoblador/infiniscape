@@ -64,7 +64,7 @@ class App:
         return tokens
 
     def _handle(self, key: str, cols: int, rows: int) -> None:
-        step = max(2.0, cols * 0.05)  # move speed scales with view size
+        step = 1.0  # one half-block pixel per keypress
         if key in ("q", "\x03", "\x1b"):
             self.running = False
         elif key in ("left", "a"):
