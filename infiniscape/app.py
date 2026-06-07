@@ -33,6 +33,8 @@ class App:
         self.drifting = False
         self.show_hud = True
         self.light_radius = 26.0  # lit radius around the player, in pixels
+        self.shadow_radius = 4.0  # dark halo hugging the player, in pixels
+        self.shadow_depth = 0.35  # darkest the halo gets (1.0 = no shadow)
         self.frame_budget = 1.0 / fps
         self.running = True
         self._mask = None
@@ -95,16 +97,29 @@ class App:
         self.cam_y = cy - rows
 
     # --- visibility --------------------------------------------------------
-    def _light_mask(self, h: int, w: int) -> np.ndarray:
-        """Cached radial falloff: 1.0 around the player, fading to 0 at the rim."""
-        key = (h, w, self.light_radius)
+    def _view_mask(self, h: int, w: int) -> np.ndarray:
+        """Cached brightness mask: a far light falloff plus a tight dark halo.
+
+        The light fades the world to black at the edge of sight; the halo darkens
+        the pixels immediately around the player so the bright player pixel always
+        sits in a little shadow and is easy to spot on any terrain.
+        """
+        key = (h, w, self.light_radius, self.shadow_radius, self.shadow_depth)
         if key == self._mask_key:
             return self._mask
         yy, xx = np.ogrid[0:h, 0:w]
         dist = np.sqrt((xx - w / 2) ** 2 + (yy - h / 2) ** 2)
+
         falloff = self.light_radius * 0.45
-        t = np.clip((self.light_radius - dist) / falloff + 1.0, 0.0, 1.0)
-        mask = (t * t * (3.0 - 2.0 * t))[..., None]  # smoothstep edge
+        lt = np.clip((self.light_radius - dist) / falloff + 1.0, 0.0, 1.0)
+        light = lt * lt * (3.0 - 2.0 * lt)  # smoothstep edge to darkness
+
+        st = np.clip(dist / self.shadow_radius, 0.0, 1.0)
+        halo = self.shadow_depth + (1.0 - self.shadow_depth) * (
+            st * st * (3.0 - 2.0 * st)
+        )
+
+        mask = (light * halo)[..., None]
         self._mask_key = key
         self._mask = mask
         return mask
@@ -146,10 +161,12 @@ class App:
         if cols < 2 or rows < 1:  # nothing sane to draw on a degenerate window
             return cols, rows
         rgb = self.world.sample(cols, rows * 2, self.cam_x, self.cam_y, self.scale)
-        rgb = (rgb * self._light_mask(rows * 2, cols)).astype(np.uint8)
 
         py, px = rows, cols // 2  # player occupies one half-block pixel
-        rgb[py, px] = self._player_color(rgb[py, px])
+        under = rgb[py, px].copy()  # true terrain color, before the shadow halo
+
+        rgb = (rgb * self._view_mask(rows * 2, cols)).astype(np.uint8)
+        rgb[py, px] = self._player_color(under)
 
         frame = render(rgb)
         if self.show_hud:
