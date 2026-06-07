@@ -6,9 +6,11 @@ upper half-block (`▀`) with truecolor foreground/background, so the picture ha
 twice the vertical resolution of the text grid and fills whatever terminal size
 you give it.
 
-You play an explorer (`@`) standing at the center of the view, carrying a light
-that reveals only the area around you. Walk in any direction and the endless
-landscape scrolls beneath you, fading into darkness at the edge of your sight.
+You play an explorer standing at the center of the view, drawn as a single
+half-block pixel so the marker sits exactly on its world coordinate. Its color
+is a contrast-guaranteed negative of the terrain beneath it, so it always pops.
+You carry a light that reveals only the area around you; walk in any direction
+and the endless landscape scrolls beneath you, fading to darkness at sight's edge.
 
 The terrain is fractal Perlin noise (fBm) shaded by slope. Colors come from a
 2D **biome** table indexed by elevation and a separate, larger-scale moisture

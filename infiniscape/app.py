@@ -1,5 +1,5 @@
 # ABOUTME: Interactive terminal loop: terminal setup, input, camera, drawing.
-# ABOUTME: Centers a player, lights only the area around them, draws the world.
+# ABOUTME: Centers a player pixel, lights its surroundings, draws the world.
 
 import os
 import select
@@ -20,7 +20,6 @@ _ALT_SCREEN_ON = "\x1b[?1049h"
 _ALT_SCREEN_OFF = "\x1b[?1049l"
 
 _ARROWS = {"\x1b[A": "up", "\x1b[B": "down", "\x1b[C": "right", "\x1b[D": "left"}
-_PLAYER = "@"
 
 
 class App:
@@ -110,6 +109,26 @@ class App:
         self._mask = mask
         return mask
 
+    # --- player ------------------------------------------------------------
+    @staticmethod
+    def _player_color(under: np.ndarray) -> np.ndarray:
+        """A contrast-guaranteed 'negative' of the pixel beneath the player.
+
+        Colorful terrain keeps the true inverse (hue alone makes it pop); grayish
+        mid-tone terrain, whose inverse would look nearly identical, is pushed to
+        the opposite luminance extreme so the player never blends in.
+        """
+        c = under.astype(np.float64)
+        inv = 255.0 - c
+        lum = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+        chroma = c.max() - c.min()
+        grayness = 1.0 - chroma / 255.0
+        midness = 1.0 - abs(lum - 127.5) / 127.5
+        flip = 0.9 * grayness * midness  # only gray AND mid-tone needs a flip
+        target = 0.0 if lum > 150.0 else 255.0
+        player = inv * (1.0 - flip) + target * flip
+        return np.clip(player, 0, 255).astype(np.uint8)
+
     # --- frame -------------------------------------------------------------
     def _hud(self, cols: int, rows: int) -> str:
         state = "walk" if self.drifting else "still"
@@ -122,19 +141,17 @@ class App:
         )[:cols]
         return f"\x1b[1;1H\x1b[7m{text}\x1b[0m"
 
-    def _player_overlay(self, cols: int, rows: int) -> str:
-        r = rows // 2 + 1  # 1-based center row
-        c = cols // 2 + 1  # 1-based center column
-        return f"\x1b[{r};{c}H\x1b[1;97;40m{_PLAYER}\x1b[0m"
-
     def _draw(self) -> tuple[int, int]:
         cols, rows = os.get_terminal_size()
         if cols < 2 or rows < 1:  # nothing sane to draw on a degenerate window
             return cols, rows
         rgb = self.world.sample(cols, rows * 2, self.cam_x, self.cam_y, self.scale)
         rgb = (rgb * self._light_mask(rows * 2, cols)).astype(np.uint8)
+
+        py, px = rows, cols // 2  # player occupies one half-block pixel
+        rgb[py, px] = self._player_color(rgb[py, px])
+
         frame = render(rgb)
-        frame += self._player_overlay(cols, rows)
         if self.show_hud:
             frame += self._hud(cols, rows)
         sys.stdout.write(frame)
