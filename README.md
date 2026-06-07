@@ -6,9 +6,15 @@ upper half-block (`▀`) with truecolor foreground/background, so the picture ha
 twice the vertical resolution of the text grid and fills whatever terminal size
 you give it.
 
-The terrain is fractal Perlin noise (fBm) shaded by slope and colored through an
-elevation palette (deep ocean → shallows → sand → grass → forest → rock → snow).
-The view auto-drifts across an endless landscape; you can steer, zoom, and pause.
+You play an explorer (`@`) standing at the center of the view, carrying a light
+that reveals only the area around you. Walk in any direction and the endless
+landscape scrolls beneath you, fading into darkness at the edge of your sight.
+
+The terrain is fractal Perlin noise (fBm) shaded by slope. Colors come from a
+2D **biome** table indexed by elevation and a separate, larger-scale moisture
+field: dry regions turn to ochre deserts and savanna, wet regions to lush
+forest and jungle, with temperate greens in between, plus beaches, rock, and
+snow by altitude.
 
 ## Run
 
@@ -24,16 +30,17 @@ Ghostty, WezTerm, modern Terminal.app, VS Code).
 
 | Key | Action |
 | --- | --- |
-| arrows / `wasd` | pan the camera |
+| arrows / `wasd` | move the player |
 | `+` / `-` | zoom in / out |
-| `space` | toggle auto-drift |
+| `[` / `]` | shrink / grow the light radius |
+| `space` | toggle auto-walk |
 | `h` | toggle the heads-up display |
 | `q` / `Esc` | quit |
 
 ## How it works
 
 - `noise.py` — vectorized 2D Perlin noise and fractal Brownian motion.
-- `palette.py` — smooth interpolation between elevation color stops.
-- `world.py` — samples the camera window, adds hillshade, applies the palette.
+- `palette.py` — bilinear blend over an elevation × moisture biome table.
+- `world.py` — samples elevation and moisture, adds hillshade, applies biomes.
 - `renderer.py` — packs the RGB grid into a half-block ANSI frame.
-- `app.py` — terminal setup, raw input, camera, and the render loop.
+- `app.py` — terminal setup, input, the player, the light mask, render loop.

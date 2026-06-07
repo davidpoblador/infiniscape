@@ -1,43 +1,52 @@
-# ABOUTME: Maps normalized terrain height to smooth RGB biome colors.
-# ABOUTME: Interpolates between elevation color stops for a continuous surface.
+# ABOUTME: Maps terrain elevation and moisture to smooth RGB biome colors.
+# ABOUTME: Bilinearly blends a 2D table; ocean/rock/snow ignore moisture.
 
 import numpy as np
 
-# Elevation stops from deep ocean to snow peaks: (height in [0,1], (r, g, b)).
-# Bands are spaced to blend gently; the shallows->shore band in particular is
-# kept wide so coastlines fade rather than snap.
-_STOPS = [
-    (0.00, (15, 32, 72)),
-    (0.32, (28, 72, 134)),
-    (0.46, (52, 124, 190)),
-    (0.50, (104, 178, 208)),
-    (0.55, (206, 200, 160)),
-    (0.62, (150, 184, 104)),
-    (0.70, (104, 158, 82)),
-    (0.80, (70, 122, 64)),
-    (0.87, (116, 110, 92)),
-    (0.93, (156, 150, 140)),
-    (0.97, (206, 204, 202)),
-    (1.00, (250, 250, 254)),
+# Each row is an elevation stop with four moisture variants:
+#   column 0 arid, 1 dry, 2 moist, 3 wet.
+# Ocean, shore, rock, and snow are moisture-independent (identical columns).
+# The "moist" column is the original elevation palette, so a temperate biome
+# looks exactly like the world did before biomes existed.
+_MOIST_LEVELS = 4
+
+_ROWS = [
+    (0.000, [(10, 24, 64)] * 4),  # deep ocean
+    (0.380, [(24, 64, 130)] * 4),  # ocean
+    (0.470, [(42, 120, 196)] * 4),  # water
+    (0.500, [(70, 170, 210)] * 4),  # shallows
+    (0.515, [(224, 214, 158)] * 4),  # beach
+    (
+        0.550,
+        [(214, 196, 132), (190, 196, 120), (148, 184, 96), (104, 182, 96)],
+    ),  # low veg
+    (0.660, [(176, 150, 96), (150, 168, 96), (92, 150, 70), (54, 134, 74)]),  # mid veg
+    (0.760, [(138, 120, 86), (104, 124, 74), (58, 110, 52), (38, 96, 58)]),  # high veg
+    (0.840, [(110, 102, 84)] * 4),  # rock
+    (0.920, [(150, 142, 132)] * 4),  # high rock
+    (0.970, [(208, 206, 204)] * 4),  # snow line
+    (1.000, [(252, 252, 255)] * 4),  # peak snow
 ]
 
-_THRESH = np.array([s[0] for s in _STOPS])
-_COLORS = np.array([s[1] for s in _STOPS], dtype=np.float64)
+_E = np.array([r[0] for r in _ROWS])
+_TABLE = np.array([r[1] for r in _ROWS], dtype=np.float64)  # (n_elev, 4, 3)
 
 
-def _smoothstep(t: np.ndarray) -> np.ndarray:
-    """Ease 0->1 so each segment fades in and out instead of ramping linearly."""
-    return t * t * (3.0 - 2.0 * t)
+def colorize(height: np.ndarray, moisture: np.ndarray) -> np.ndarray:
+    """Blend the (elevation, moisture) table into an (..., 3) float RGB grid."""
+    ei = np.clip(np.searchsorted(_E, height, side="right") - 1, 0, len(_E) - 2)
+    e0 = _E[ei]
+    e1 = _E[ei + 1]
+    fe = np.clip((height - e0) / (e1 - e0), 0.0, 1.0)[..., None]
 
+    m = np.clip(moisture, 0.0, 1.0) * (_MOIST_LEVELS - 1)
+    mi = np.clip(np.floor(m).astype(np.int32), 0, _MOIST_LEVELS - 2)
+    fm = (m - mi)[..., None]
 
-def colorize(height: np.ndarray) -> np.ndarray:
-    """Convert a [0,1] height grid into an (..., 3) float RGB grid (0-255)."""
-    idx = np.searchsorted(_THRESH, height, side="right") - 1
-    idx = np.clip(idx, 0, len(_STOPS) - 2)
-    t0 = _THRESH[idx]
-    t1 = _THRESH[idx + 1]
-    frac = np.clip((height - t0) / (t1 - t0), 0.0, 1.0)
-    frac = _smoothstep(frac)[..., None]
-    c0 = _COLORS[idx]
-    c1 = _COLORS[idx + 1]
-    return c0 + (c1 - c0) * frac
+    c00 = _TABLE[ei, mi]
+    c10 = _TABLE[ei + 1, mi]
+    c01 = _TABLE[ei, mi + 1]
+    c11 = _TABLE[ei + 1, mi + 1]
+    top = c00 + (c01 - c00) * fm
+    bot = c10 + (c11 - c10) * fm
+    return top + (bot - top) * fe
