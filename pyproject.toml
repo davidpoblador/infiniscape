@@ -1,0 +1,15 @@
+[project]
+name = "infiniscape"
+version = "0.1.0"
+description = "Infinite procedurally generated world TUI rendered with terminal half-block characters"
+requires-python = ">=3.14"
+dependencies = [
+    "numpy>=2.4.6",
+]
+
+[project.scripts]
+infiniscape = "infiniscape.app:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
