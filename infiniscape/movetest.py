@@ -41,7 +41,7 @@ def main():
         os.write(fd, s.encode())
 
     window = 0.08   # seconds: two keys within this make a diagonal
-    release = 0.40  # seconds of silence before the heading clears
+    release = 0.10  # seconds of silence before the heading clears
     x = y = 0
     hx = hy = 0          # current heading
     last_active = -1.0
