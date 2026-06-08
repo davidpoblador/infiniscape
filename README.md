@@ -64,6 +64,28 @@ grassland, forest, rainforest, taiga, tundra, alpine); rivers are local streams
 that settle in valleys. Coarse views fade out sub-cell detail so they stay smooth
 instead of aliasing.
 
+## Planet mode
+
+A second script wraps the world onto a **sphere** you can walk around. Position
+is latitude/longitude, each screen pixel maps to a point on the globe via the
+exponential map (no seams, works across the poles), and 3D noise on the sphere
+makes the terrain — so walking east 360° brings you back where you started, and
+going over a pole comes out the far side. A small orthographic globe in the
+corner shows the whole planet and where you are.
+
+```sh
+uv run infiniscape-planet          # or: uv run python -m infiniscape.planet
+uvx --from git+https://github.com/davidpoblador/infiniscape infiniscape-planet
+```
+
+| Key | Action |
+| --- | --- |
+| arrows / `wasd` | walk the surface (wraps around) |
+| `+` / `-` | zoom the field of view |
+| `,` / `.` | lower / raise sea level |
+| `g` | toggle the globe |
+| `q` / `Esc` | quit |
+
 ## Snapshots
 
 `scripts/snapshot.py` renders composed frames to PNG (half-block cells plus

@@ -95,3 +95,61 @@ def ridged_fbm(
         amp *= persistence
         freq *= lacunarity
     return total / norm
+
+
+_GRAD3 = np.array(
+    [
+        (1, 1, 0), (-1, 1, 0), (1, -1, 0), (-1, -1, 0),
+        (1, 0, 1), (-1, 0, 1), (1, 0, -1), (-1, 0, -1),
+        (0, 1, 1), (0, -1, 1), (0, 1, -1), (0, -1, -1),
+    ],
+    dtype=np.float64,
+)  # fmt: skip
+
+
+def perlin3(x: np.ndarray, y: np.ndarray, z: np.ndarray, perm: np.ndarray) -> np.ndarray:
+    """Classic 3D Perlin noise over float coordinate grids, range ~[-1, 1]."""
+    xi = np.floor(x).astype(np.int32) & 255
+    yi = np.floor(y).astype(np.int32) & 255
+    zi = np.floor(z).astype(np.int32) & 255
+    xf = x - np.floor(x)
+    yf = y - np.floor(y)
+    zf = z - np.floor(z)
+    u, v, w = _fade(xf), _fade(yf), _fade(zf)
+
+    a = perm[xi] + yi
+    aa, ab = perm[a] + zi, perm[a + 1] + zi
+    b = perm[xi + 1] + yi
+    ba, bb = perm[b] + zi, perm[b + 1] + zi
+
+    def g(h: np.ndarray, dx: np.ndarray, dy: np.ndarray, dz: np.ndarray) -> np.ndarray:
+        gr = _GRAD3[h % 12]
+        return gr[..., 0] * dx + gr[..., 1] * dy + gr[..., 2] * dz
+
+    x1 = _lerp(g(perm[aa], xf, yf, zf), g(perm[ba], xf - 1, yf, zf), u)
+    x2 = _lerp(g(perm[ab], xf, yf - 1, zf), g(perm[bb], xf - 1, yf - 1, zf), u)
+    y1 = _lerp(x1, x2, v)
+    x3 = _lerp(g(perm[aa + 1], xf, yf, zf - 1), g(perm[ba + 1], xf - 1, yf, zf - 1), u)
+    x4 = _lerp(g(perm[ab + 1], xf, yf - 1, zf - 1), g(perm[bb + 1], xf - 1, yf - 1, zf - 1), u)
+    y2 = _lerp(x3, x4, v)
+    return _lerp(y1, y2, w)
+
+
+def fbm3(
+    x: np.ndarray,
+    y: np.ndarray,
+    z: np.ndarray,
+    perm: np.ndarray,
+    octaves: int = 6,
+    persistence: float = 0.5,
+    lacunarity: float = 2.0,
+) -> np.ndarray:
+    """Fractal Brownian motion from 3D Perlin noise, normalized to ~[-1, 1]."""
+    total = np.zeros_like(x)
+    amp, freq, norm = 1.0, 1.0, 0.0
+    for _ in range(octaves):
+        total += amp * perlin3(x * freq, y * freq, z * freq, perm)
+        norm += amp
+        amp *= persistence
+        freq *= lacunarity
+    return total / norm
