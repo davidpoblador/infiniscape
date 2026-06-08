@@ -49,7 +49,7 @@ class App:
         self.world = World(seed=seed)
         self.px = 0  # player world position in pixels; starts at the origin
         self.py = 0
-        self.scale = 0.018  # noise units per pixel (fixed; the main view does not zoom)
+        self.scale = 1.0  # metres per cell (1 m per square)
         self.sea_level = 0.0  # waterline offset: >0 floods, <0 exposes land
         self.light_radius = 26.0  # lit radius around the player, in pixels
         self.show_features = True

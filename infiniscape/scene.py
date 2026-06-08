@@ -35,7 +35,7 @@ def compose(
     shadow_depth: float = 0.40,
     features: bool = True,
     minimap: bool = True,
-    minimap_factor: float = 12.0,
+    minimap_factor: float = 400.0,
     player_px: int | None = None,
     player_py: int | None = None,
 ) -> tuple[np.ndarray, np.ndarray | None, np.ndarray | None, tuple]:

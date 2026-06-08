@@ -49,16 +49,20 @@ origin `(0,0)`; coordinates go negative in every direction.
 
 ## The world
 
-- **Elevation** is domain-warped fractal noise: low-frequency continents with a
-  contrast curve for real oceans and plains.
-- **Mountains** are ridged multifractal noise added on high ground, giving sharp
-  ridgelines that catch the light, with snow on the peaks.
-- **Rivers** follow the zero-set of a warped noise channel, gated to land,
-  widening toward the coast, and carved into the height so they run through
-  shaded valleys to the sea. Everything is a pure function of position, so it
-  streams infinitely and stays stable as you move.
-- **Biomes** come from elevation plus separate moisture and temperature fields:
-  deserts, savanna, grassland, forest, rainforest, taiga, tundra, and alpine.
+The world is **metric: one cell is one metre**. Terrain is built from physically
+scaled noise octaves (wavelengths from metres to kilometres, amplitudes chosen so
+per-metre slopes stay realistic), so what you see on screen is ~150 m of gentle
+rolling ground — believable hillsides, not noise cliffs. Heights in the status
+bar are real metres relative to sea level.
+
+Because a real continent is tens of kilometres across, coastlines, mountain
+ranges and the open sea are usually off-screen; a single view is mostly one
+biome with subtle elevation. The **minimap** is your regional overview (hundreds
+of metres per cell), where landmasses, seas and your position show up. Moisture
+and temperature vary over kilometres and set the biome (desert, savanna,
+grassland, forest, rainforest, taiga, tundra, alpine); rivers are local streams
+that settle in valleys. Coarse views fade out sub-cell detail so they stay smooth
+instead of aliasing.
 
 ## Snapshots
 
