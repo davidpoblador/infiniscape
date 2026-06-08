@@ -92,9 +92,11 @@ class World:
             0.55,
             (fbm(xw * 0.22 + 400.0, yw * 0.22 + 400.0, p, octaves=2) + 1) * 0.5,
         )
-        land = _smoothstep(0.30, 0.36, elev) * (1.0 - _smoothstep(0.82, 0.90, elev))
+        land = _smoothstep(0.515, 0.55, elev) * (1.0 - _smoothstep(0.82, 0.90, elev))
         river = line * valley * basins * land
-        elev = np.clip(elev - river * 0.07, 0.0, 1.0)
+        # gentle carve for valley shading, but never below the shoreline so the
+        # channel stays a river instead of turning into a sea inlet
+        elev = np.maximum(elev - river * 0.05, np.minimum(elev, _SEA + 0.02))
 
         # moisture: its own field, but wetter along the rivers
         moist = (fbm(x * 0.4 + 900.0, y * 0.4 + 900.0, p, octaves=2) + 1) * 0.5
@@ -111,7 +113,7 @@ class World:
         self, rgb: np.ndarray, elev: np.ndarray, river: np.ndarray
     ) -> np.ndarray:
         """Paint river water over land cells, brighter at the channel center."""
-        a = (np.clip((river - 0.12) / 0.5, 0.0, 1.0) * (elev > _SEA + 0.01))[..., None]
+        a = (np.clip((river - 0.12) / 0.5, 0.0, 1.0) * (elev > _SEA + 0.015))[..., None]
         shallow = np.array([74, 150, 205], dtype=np.float64)
         deep = np.array([44, 104, 170], dtype=np.float64)
         water = deep + (shallow - deep) * np.clip(river, 0.0, 1.0)[..., None]
