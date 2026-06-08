@@ -36,6 +36,8 @@ def compose(
     features: bool = True,
     minimap: bool = True,
     minimap_factor: float = 12.0,
+    player_px: int | None = None,
+    player_py: int | None = None,
 ) -> tuple[np.ndarray, np.ndarray | None, np.ndarray | None, tuple]:
     """Return (rgb pixels, sprite chars, sprite colors) for one frame.
 
@@ -51,7 +53,10 @@ def compose(
     ]
     f = f * (1.0 - halo) + grey * halo  # neutral, hue-free shadow near the player
 
-    px, py = cols // 2, rows  # the player's pixel
+    px = cols // 2 if player_px is None else player_px
+    py = (
+        rows if player_py is None else player_py
+    )  # player's pixel (top/bottom of its cell)
     under = rgb[py, px].copy()  # true terrain color, before the shadow
     disp = np.clip(f * bright, 0, 255).astype(np.uint8)
     disp[py, px] = player_color(under)
@@ -66,7 +71,7 @@ def compose(
             np.uint8
         )
         chars[cell_bright < 0.08] = ""  # hide sprites swallowed by the dark
-        chars[rows // 2, cols // 2] = ""  # never cover the player
+        chars[py // 2, px] = ""  # never cover the player
 
     if minimap:
         _draw_minimap(

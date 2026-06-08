@@ -23,8 +23,8 @@ uv run infiniscape 42       # optional integer seed for a different world
 Straight from GitHub, no clone needed:
 
 ```sh
-uv run --from git+https://github.com/davidpoblador/infiniscape infiniscape
-uv run --from git+https://github.com/davidpoblador/infiniscape infiniscape 42
+uvx --from git+https://github.com/davidpoblador/infiniscape infiniscape
+uvx --from git+https://github.com/davidpoblador/infiniscape infiniscape 42
 ```
 
 Needs a truecolor-capable terminal (most modern ones: iTerm2, Kitty, Alacritty,
@@ -34,7 +34,7 @@ Ghostty, WezTerm, modern Terminal.app, VS Code).
 
 | Key | Action |
 | --- | --- |
-| arrows / `wasd` | move (press two keys together for a diagonal) |
+| arrows / `wasd` | move (one cardinal step at a time) |
 | `,` / `.` | lower / raise the sea level |
 | `[` / `]` | shrink / grow the light radius |
 | `f` | toggle sprites |
@@ -42,7 +42,7 @@ Ghostty, WezTerm, modern Terminal.app, VS Code).
 | `h` | open / close the help modal |
 | `q` / `Esc` | quit |
 
-The status bar shows your coordinates, the current biome and temperature, and a
+Movement is cardinal (terminals can't reliably report two keys at once). The status bar shows your coordinates, the current biome and temperature, and a
 clock and date (one real second is one in-game minute). You start at the world
 origin `(0,0)`; coordinates go negative in every direction.
 

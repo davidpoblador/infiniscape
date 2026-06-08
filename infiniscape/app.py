@@ -8,6 +8,7 @@ import sys
 import termios
 import time
 import tty
+from datetime import datetime, timedelta, timezone
 
 from . import biomes
 from .renderer import render
@@ -24,11 +25,9 @@ _MOVES = {
     "left": (-1, 0), "a": (-1, 0), "right": (1, 0), "d": (1, 0),
     "up": (0, -1), "w": (0, -1), "down": (0, 1), "s": (0, 1),
 }  # fmt: skip
-_DIAG = 0.7071067811865476  # 1 / sqrt(2)
 
 _HELP_LINES = [
     "  move          w a s d  ·  arrow keys",
-    "  diagonal      press two keys together",
     "  sea level     ,  (lower)    .  (raise)",
     "  light         [  (smaller)  ]  (larger)",
     "  trees         f",
@@ -42,8 +41,8 @@ _HELP_TITLE = " infiniscape — controls "
 class App:
     def __init__(self, seed: int = 1337, fps: float = 30.0):
         self.world = World(seed=seed)
-        self.px = 0.0  # player world position in pixels; starts at the origin
-        self.py = 0.0
+        self.px = 0  # player world position in pixels; starts at the origin
+        self.py = 0
         self.scale = 0.018  # noise units per pixel (fixed; the main view does not zoom)
         self.sea_level = 0.0  # waterline offset: >0 floods, <0 exposes land
         self.light_radius = 26.0  # lit radius around the player, in pixels
@@ -52,6 +51,7 @@ class App:
         self.show_help = False
         self.frame_budget = 1.0 / fps
         self.start = 0.0
+        self.start_dt = datetime.now(timezone.utc)
         self.running = True
 
     # --- input -------------------------------------------------------------
@@ -78,22 +78,16 @@ class App:
         return tokens
 
     def _step(self, keys: list[str]) -> None:
-        """Move once per frame from the keys held this frame (diagonals combine)."""
-        dx = dy = 0
+        """Move once per frame. Cardinal only: the last movement key wins."""
+        mx = my = 0
         for key in keys:
             move = _MOVES.get(key)
             if move:
-                dx += move[0]
-                dy += move[1]
+                mx, my = move
             else:
                 self._handle(key)
-        sx, sy = max(-1, min(1, dx)), max(-1, min(1, dy))
-        if sx and sy:  # keep diagonal speed equal to a straight step
-            self.px += sx * _DIAG
-            self.py += sy * _DIAG
-        else:
-            self.px += sx
-            self.py += sy
+        self.px += mx
+        self.py += my
 
     def _handle(self, key: str) -> None:
         if key in ("q", "\x03"):
@@ -120,20 +114,19 @@ class App:
 
     # --- clock -------------------------------------------------------------
     def _clock(self) -> tuple[int, str, str]:
-        """Game time: one real second is one in-game minute. Returns (min, hh:mm, date)."""
+        """One real second is one in-game minute, counting from today (UTC)."""
         total = int(time.monotonic() - self.start)  # in-game minutes elapsed
-        hh, mm = (total // 60) % 24, total % 60
-        days = total // 1440
-        year, month, day = days // 360 + 1, (days % 360) // 30 + 1, days % 30 + 1
-        return total, f"{hh:02d}:{mm:02d}", f"{year:04d}-{month:02d}-{day:02d}"
+        now = self.start_dt + timedelta(minutes=total)
+        return total, now.strftime("%H:%M"), now.strftime("%Y-%m-%d")
 
     # --- frame -------------------------------------------------------------
     def _top_bar(self, cols: int, stats: tuple) -> str:
         elev, moist, temp = stats
         _, clock, date = self._clock()
+        height = round((elev - 0.50) * 8000)  # metres relative to the shoreline (sea = 0)
         left = (
             f" @ {int(self.px):+d},{int(self.py):+d}  "
-            f"{biomes.name(elev, moist, temp)}  {biomes.celsius(temp):+d}°C  "
+            f"{biomes.name(elev, moist, temp)}  {height:+d}m  {biomes.celsius(temp):+d}°C  "
             f"{clock}  {date} "
         )
         right = "(h)elp "
@@ -165,7 +158,15 @@ class App:
             f"\x1b[{r0 + i};{c0}H{style}{row}\x1b[0m" for i, row in enumerate(box)
         )
 
-    def _draw(self, cols: int, rows: int, cam_x: float, cam_y: float) -> None:
+    def _draw(
+        self,
+        cols: int,
+        rows: int,
+        cam_x: int,
+        cam_y: int,
+        player_px: int,
+        player_py: int,
+    ) -> None:
         rgb, chars, fg, stats = compose(
             self.world,
             cols,
@@ -177,6 +178,8 @@ class App:
             self.light_radius,
             features=self.show_features,
             minimap=self.show_minimap,
+            player_px=player_px,
+            player_py=player_py,
         )
         frame = render(rgb, chars, fg) + self._top_bar(cols, stats)
         if self.show_help:
@@ -193,23 +196,31 @@ class App:
             sys.stdout.write(_ALT_SCREEN_ON + _HIDE_CURSOR + "\x1b[2J")
             sys.stdout.flush()
             self.start = time.monotonic()
+            self.start_dt = datetime.now(timezone.utc).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
             last_sig = None
             while self.running:
                 loop_start = time.monotonic()
                 self._step(self._read_keys())
                 cols, rows = os.get_terminal_size()
-                # snap the camera to whole cells (2px) so scrolling steps by one
-                # full block and sprites stay locked to the terrain
-                cam_x = round((self.px - cols / 2) / 2) * 2
-                cam_y = round((self.py - rows) / 2) * 2
+                # Horizontal cells are 1px: keep the player centered, scroll every step.
+                # Vertical cells are 2px: snap the camera down to an even row so the
+                # player rides the top/bottom half of its cell, and the world only
+                # scrolls when it crosses a whole cell.
+                cam_x = self.px - cols // 2
+                cam_y = self.py - rows
+                cam_y -= cam_y & 1
+                player_px = self.px - cam_x  # == cols // 2
+                player_py = self.py - cam_y  # rows or rows+1 (top/bottom highlight)
                 minute = int(time.monotonic() - self.start)
                 sig = (
-                    cam_x, cam_y, self.sea_level, self.light_radius,
+                    self.px, self.py, self.sea_level, self.light_radius,
                     self.show_features, self.show_minimap, self.show_help,
                     minute, cols, rows,
                 )  # fmt: skip
                 if sig != last_sig and cols >= 2 and rows >= 1:
-                    self._draw(cols, rows, cam_x, cam_y)
+                    self._draw(cols, rows, cam_x, cam_y, player_px, player_py)
                     last_sig = sig
                 elapsed = time.monotonic() - loop_start
                 if elapsed < self.frame_budget:
