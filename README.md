@@ -39,6 +39,7 @@ Ghostty, WezTerm, modern Terminal.app, VS Code).
 | `[` / `]` | shrink / grow the light radius |
 | `f` | toggle sprites |
 | `m` | toggle the minimap |
+| `p` | save a smooth high-res PNG of the location and open it in Preview |
 | `h` | open / close the help modal |
 | `q` / `Esc` | quit |
 

@@ -47,7 +47,9 @@ def compose(
     rgb, elev, moist, temp = world.sample(w_px, h_px, cam_x, cam_y, scale, sea_level)
 
     px = cols // 2 if player_px is None else player_px
-    py = rows if player_py is None else player_py  # player's pixel (top/bottom of its cell)
+    py = (
+        rows if player_py is None else player_py
+    )  # player's pixel (top/bottom of its cell)
     light, halo = _masks(h_px, w_px, light_radius, shadow_radius, px, py)
 
     # The shadow well is a darkened shade of the player's own color, so the marker
@@ -64,7 +66,9 @@ def compose(
             elev[0::2], moist[0::2], math.floor(cam_x), math.floor(cam_y / 2)
         )
         cell_vis = (light * (1.0 - halo))[0::2, :, 0]
-        fg = np.clip(fg.astype(np.float64) * cell_vis[..., None], 0, 255).astype(np.uint8)
+        fg = np.clip(fg.astype(np.float64) * cell_vis[..., None], 0, 255).astype(
+            np.uint8
+        )
         chars[cell_vis < 0.08] = ""  # hide sprites in the dark or in the well
         chars[py // 2, px] = ""  # never cover the player
 

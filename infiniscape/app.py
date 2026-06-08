@@ -4,13 +4,18 @@
 import os
 import select
 import signal
+import subprocess
 import sys
 import termios
 import time
 import tty
+import tempfile
 from datetime import datetime, timedelta, timezone
 
+import numpy as np
+
 from . import biomes
+from .png import write_png
 from .renderer import render
 from .scene import compose
 from .world import World
@@ -32,6 +37,7 @@ _HELP_LINES = [
     "  light         [  (smaller)  ]  (larger)",
     "  trees         f",
     "  minimap       m",
+    "  snapshot      p   (PNG to Preview)",
     "  help          h   (close this)",
     "  quit          q   ·   Esc",
 ]
@@ -53,6 +59,7 @@ class App:
         self.start = 0.0
         self.start_dt = datetime.now(timezone.utc)
         self.running = True
+        self.snap_requested = False  # 'p' exports a smooth PNG of the view
         self.tty = -1  # fd of the controlling terminal, opened in run()
         self._opened_tty = False
 
@@ -118,6 +125,8 @@ class App:
             self.show_minimap = not self.show_minimap
         elif key == "h":
             self.show_help = not self.show_help
+        elif key == "p":
+            self.snap_requested = True
 
     # --- clock -------------------------------------------------------------
     def _clock(self) -> tuple[int, str, str]:
@@ -163,6 +172,29 @@ class App:
         style = "\x1b[48;2;26;28;40m\x1b[38;2;236;236;242m"
         return "".join(
             f"\x1b[{r0 + i};{c0}H{style}{row}\x1b[0m" for i, row in enumerate(box)
+        )
+
+    def _save_png(self, cols: int, rows: int, cam_x: int, cam_y: int) -> None:
+        """Render a smooth, high-res PNG of the current view and open it in Preview.
+
+        Re-samples the same procedural terrain at k× finer scale over the exact
+        window on screen, so the image is continuous rather than half-block cells.
+        """
+        k = max(4, min(14, round(1600 / max(cols, 1))))
+        rgb, _, _, _ = self.world.sample(
+            cols * k, rows * 2 * k, cam_x * k, cam_y * k, self.scale / k, self.sea_level
+        )
+        # mark the current location with a red ring
+        h, w, _ = rgb.shape
+        cyc, cxc = rows * k, (cols // 2) * k
+        yy, xx = np.ogrid[0:h, 0:w]
+        dist = np.sqrt((xx - cxc) ** 2 + (yy - cyc) ** 2)
+        rgb[np.abs(dist - 2.2 * k) < max(1.0, 0.3 * k)] = (255, 64, 64)
+
+        path = os.path.join(tempfile.gettempdir(), f"infiniscape_{self.px}_{self.py}.png")
+        write_png(path, rgb)
+        subprocess.Popen(
+            ["open", path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         )
 
     def _draw(
@@ -234,6 +266,9 @@ class App:
                 if sig != last_sig and cols >= 2 and rows >= 1:
                     self._draw(cols, rows, cam_x, cam_y, player_px, player_py)
                     last_sig = sig
+                if self.snap_requested and cols >= 2 and rows >= 1:
+                    self.snap_requested = False
+                    self._save_png(cols, rows, cam_x, cam_y)
                 elapsed = time.monotonic() - loop_start
                 if elapsed < self.frame_budget:
                     time.sleep(self.frame_budget - elapsed)
