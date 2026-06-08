@@ -13,12 +13,12 @@ _mask_cache: dict = {}
 _minimap_cache: dict = {}
 
 
-def _masks(h, w, lr, sr, sd, cx, cy):
-    key = (h, w, lr, sr, sd, cx, cy)
+def _masks(h, w, lr, sr, cx, cy):
+    key = (h, w, lr, sr, cx, cy)
     if key not in _mask_cache:
         if len(_mask_cache) > 4:
             _mask_cache.clear()
-        _mask_cache[key] = view_masks(h, w, lr, sr, sd, cx, cy)
+        _mask_cache[key] = view_masks(h, w, lr, sr, cx, cy)
     return _mask_cache[key]
 
 
@@ -31,7 +31,7 @@ def compose(
     scale: float,
     sea_level: float = 0.0,
     light_radius: float = 26.0,
-    shadow_radius: float = 7.0,
+    shadow_radius: float = 5.5,
     shadow_depth: float = 0.40,
     features: bool = True,
     minimap: bool = True,
@@ -48,14 +48,14 @@ def compose(
 
     px = cols // 2 if player_px is None else player_px
     py = rows if player_py is None else player_py  # player's pixel (top/bottom of its cell)
-    bright, halo = _masks(h_px, w_px, light_radius, shadow_radius, shadow_depth, px, py)
+    light, halo = _masks(h_px, w_px, light_radius, shadow_radius, px, py)
 
     # The shadow well is a darkened shade of the player's own color, so the marker
-    # and its halo read as one consistent element on any terrain.
+    # and its halo read as one consistent element on any terrain. The light
+    # vignette is applied separately so the well keeps that color (not the terrain).
     pcol = player_color(rgb[py, px].copy()).astype(np.float64)
-    f = rgb.astype(np.float64)
-    f = f * (1.0 - halo) + (pcol * 0.45) * halo
-    disp = np.clip(f * bright, 0, 255).astype(np.uint8)
+    f = rgb.astype(np.float64) * (1.0 - halo) + (pcol * shadow_depth) * halo
+    disp = np.clip(f * light, 0, 255).astype(np.uint8)
     disp[py, px] = pcol.astype(np.uint8)
 
     chars = fg = None
@@ -63,11 +63,9 @@ def compose(
         chars, fg = build_features(
             elev[0::2], moist[0::2], math.floor(cam_x), math.floor(cam_y / 2)
         )
-        cell_bright = bright[0::2, :, 0]
-        fg = np.clip(fg.astype(np.float64) * cell_bright[..., None], 0, 255).astype(
-            np.uint8
-        )
-        chars[cell_bright < 0.08] = ""  # hide sprites swallowed by the dark
+        cell_vis = (light * (1.0 - halo))[0::2, :, 0]
+        fg = np.clip(fg.astype(np.float64) * cell_vis[..., None], 0, 255).astype(np.uint8)
+        chars[cell_vis < 0.08] = ""  # hide sprites in the dark or in the well
         chars[py // 2, px] = ""  # never cover the player
 
     if minimap:

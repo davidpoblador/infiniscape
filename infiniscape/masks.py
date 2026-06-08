@@ -1,4 +1,4 @@
-# ABOUTME: Player-centered view masks and the contrast-safe player color.
+# ABOUTME: Player-centered light/shadow masks and the contrast-safe player color.
 # ABOUTME: Shared by the live app and the offline snapshot renderer.
 
 import numpy as np
@@ -9,15 +9,13 @@ def view_masks(
     w: int,
     light_radius: float,
     shadow_radius: float,
-    shadow_depth: float,
     cx: float | None = None,
     cy: float | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Return (brightness, halo) masks centered on the player.
+    """Return (light, halo) masks centered on (cx, cy).
 
-    Brightness fades the world to black at the edge of sight and digs a dark well
-    around the player; halo strength (1 at the player, 0 past the shadow radius)
-    drives a desaturation toward neutral grey so the shadow carries no terrain hue.
+    light fades from 1 in the lit area to 0 at the edge of sight. halo is 1 at the
+    player and 0 past the shadow radius; the caller uses it to tint a small well.
     """
     if cx is None:
         cx = w / 2
@@ -33,8 +31,7 @@ def view_masks(
     st = np.clip(dist / shadow_radius, 0.0, 1.0)
     halo = 1.0 - st * st * (3.0 - 2.0 * st)
 
-    bright = light * (1.0 - (1.0 - shadow_depth) * halo)
-    return bright[..., None], halo[..., None]
+    return light[..., None], halo[..., None]
 
 
 def player_color(under: np.ndarray) -> np.ndarray:
