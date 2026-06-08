@@ -103,9 +103,10 @@ def _draw_minimap(
     factor: float,
 ) -> None:
     """Composite a coarse, always-lit overview into the bottom-left, if it fits."""
-    mm_cols = min(40, max(20, cols // 4))
-    mm_rows = min(14, max(8, rows // 4))
-    if cols < mm_cols + 6 or rows < mm_rows + 4:
+    mm_cols = min(40, max(16, cols // 4))
+    mm_cols -= mm_cols % 2  # even, so the pixel region is square (round on screen)
+    mm_rows = mm_cols // 2
+    if cols < mm_cols + 4 or rows < mm_rows + 3:
         return  # not enough room; skip the map
 
     w_mm, h_mm = mm_cols, mm_rows * 2
