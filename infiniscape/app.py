@@ -34,6 +34,7 @@ class App:
         self.light_radius = 26.0  # lit radius around the player, in pixels
         self.shadow_radius = 4.0  # dark halo hugging the player, in pixels
         self.shadow_depth = 0.35  # darkest the halo gets (1.0 = no shadow)
+        self.sea_level = 0.0  # waterline offset: >0 floods, <0 exposes land
         self.frame_budget = 1.0 / fps
         self.running = True
         self._masks = None
@@ -84,6 +85,10 @@ class App:
             self.light_radius = max(8.0, self.light_radius - 4.0)
         elif key == "]":
             self.light_radius = min(400.0, self.light_radius + 4.0)
+        elif key in (".", ">"):
+            self.sea_level = min(0.45, self.sea_level + 0.02)
+        elif key in (",", "<"):
+            self.sea_level = max(-0.45, self.sea_level - 0.02)
         elif key == " ":
             self.vx = self.vy = 0  # stop
 
@@ -161,8 +166,8 @@ class App:
         py = int(self.cam_y + rows)  # player sits at the view center
         text = (
             f" infiniscape  @ {px:+d},{py:+d}  {heading}  zoom {1 / self.scale:5.0f}  "
-            f"light {int(self.light_radius)}  "
-            f"[wasd/arrows steer  space stop  +/- zoom  [ ] light  h hud  q quit] "
+            f"light {int(self.light_radius)}  sea {self.sea_level:+.2f}  "
+            f"[wasd steer  space stop  +/- zoom  [ ] light  , . sea  h hud  q quit] "
         )[:cols]
         return f"\x1b[1;1H\x1b[7m{text}\x1b[0m"
 
@@ -170,7 +175,9 @@ class App:
         cols, rows = os.get_terminal_size()
         if cols < 2 or rows < 1:  # nothing sane to draw on a degenerate window
             return cols, rows
-        rgb = self.world.sample(cols, rows * 2, self.cam_x, self.cam_y, self.scale)
+        rgb = self.world.sample(
+            cols, rows * 2, self.cam_x, self.cam_y, self.scale, self.sea_level
+        )
 
         py, px = rows, cols // 2  # player occupies one half-block pixel
         under = rgb[py, px].copy()  # true terrain color, before the shadow halo

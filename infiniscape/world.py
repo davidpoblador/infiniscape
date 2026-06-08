@@ -17,11 +17,18 @@ class World:
         self.shade_strength = 9.0
 
     def sample(
-        self, width: int, height: int, cam_x: float, cam_y: float, scale: float
+        self,
+        width: int,
+        height: int,
+        cam_x: float,
+        cam_y: float,
+        scale: float,
+        sea_level: float = 0.0,
     ) -> np.ndarray:
         """Render a (height, width, 3) uint8 grid for the given camera window.
 
         cam_x / cam_y are offsets in pixel units; scale is noise units per pixel.
+        sea_level raises (>0, floods land) or lowers (<0, exposes land) the water.
         """
         xs = np.arange(width) + cam_x
         ys = np.arange(height) + cam_y
@@ -29,6 +36,7 @@ class World:
         gx, gy = np.meshgrid(xs * scale, ys * scale)
         h = fbm(gx, gy, self.perm, self.octaves)
         h = (h + 1.0) * 0.5  # [-1,1] -> [0,1]
+        h = np.clip(h - sea_level, 0.0, 1.0)  # shift terrain against the waterline
 
         # Moisture varies over much larger regions, so biomes span many tiles.
         mscale = scale * 0.4
