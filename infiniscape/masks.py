@@ -5,7 +5,13 @@ import numpy as np
 
 
 def view_masks(
-    h: int, w: int, light_radius: float, shadow_radius: float, shadow_depth: float
+    h: int,
+    w: int,
+    light_radius: float,
+    shadow_radius: float,
+    shadow_depth: float,
+    cx: float | None = None,
+    cy: float | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Return (brightness, halo) masks centered on the player.
 
@@ -13,8 +19,12 @@ def view_masks(
     around the player; halo strength (1 at the player, 0 past the shadow radius)
     drives a desaturation toward neutral grey so the shadow carries no terrain hue.
     """
+    if cx is None:
+        cx = w / 2
+    if cy is None:
+        cy = h / 2
     yy, xx = np.ogrid[0:h, 0:w]
-    dist = np.sqrt((xx - w / 2) ** 2 + (yy - h / 2) ** 2)
+    dist = np.sqrt((xx - cx) ** 2 + (yy - cy) ** 2)
 
     falloff = light_radius * 0.45
     lt = np.clip((light_radius - dist) / falloff + 1.0, 0.0, 1.0)

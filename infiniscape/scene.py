@@ -9,16 +9,16 @@ from .features import build_features
 from .masks import player_color, view_masks
 from .world import World
 
-_LUMA = (0.2126, 0.7152, 0.0722)
 _mask_cache: dict = {}
 _minimap_cache: dict = {}
 
 
-def _masks(h, w, lr, sr, sd):
-    key = (h, w, lr, sr, sd)
+def _masks(h, w, lr, sr, sd, cx, cy):
+    key = (h, w, lr, sr, sd, cx, cy)
     if key not in _mask_cache:
-        _mask_cache.clear()  # geometry only changes on resize / light tweak
-        _mask_cache[key] = view_masks(h, w, lr, sr, sd)
+        if len(_mask_cache) > 4:
+            _mask_cache.clear()
+        _mask_cache[key] = view_masks(h, w, lr, sr, sd, cx, cy)
     return _mask_cache[key]
 
 
@@ -31,8 +31,8 @@ def compose(
     scale: float,
     sea_level: float = 0.0,
     light_radius: float = 26.0,
-    shadow_radius: float = 4.0,
-    shadow_depth: float = 0.35,
+    shadow_radius: float = 7.0,
+    shadow_depth: float = 0.40,
     features: bool = True,
     minimap: bool = True,
     minimap_factor: float = 12.0,
@@ -46,20 +46,17 @@ def compose(
     h_px, w_px = rows * 2, cols
     rgb, elev, moist, temp = world.sample(w_px, h_px, cam_x, cam_y, scale, sea_level)
 
-    bright, halo = _masks(h_px, w_px, light_radius, shadow_radius, shadow_depth)
-    f = rgb.astype(np.float64)
-    grey = (_LUMA[0] * f[..., 0] + _LUMA[1] * f[..., 1] + _LUMA[2] * f[..., 2])[
-        ..., None
-    ]
-    f = f * (1.0 - halo) + grey * halo  # neutral, hue-free shadow near the player
-
     px = cols // 2 if player_px is None else player_px
-    py = (
-        rows if player_py is None else player_py
-    )  # player's pixel (top/bottom of its cell)
-    under = rgb[py, px].copy()  # true terrain color, before the shadow
+    py = rows if player_py is None else player_py  # player's pixel (top/bottom of its cell)
+    bright, halo = _masks(h_px, w_px, light_radius, shadow_radius, shadow_depth, px, py)
+
+    # The shadow well is a darkened shade of the player's own color, so the marker
+    # and its halo read as one consistent element on any terrain.
+    pcol = player_color(rgb[py, px].copy()).astype(np.float64)
+    f = rgb.astype(np.float64)
+    f = f * (1.0 - halo) + (pcol * 0.45) * halo
     disp = np.clip(f * bright, 0, 255).astype(np.uint8)
-    disp[py, px] = player_color(under)
+    disp[py, px] = pcol.astype(np.uint8)
 
     chars = fg = None
     if features:

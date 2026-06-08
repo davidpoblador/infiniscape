@@ -47,7 +47,7 @@ class App:
         self.sea_level = 0.0  # waterline offset: >0 floods, <0 exposes land
         self.light_radius = 26.0  # lit radius around the player, in pixels
         self.show_features = True
-        self.show_minimap = False
+        self.show_minimap = True
         self.show_help = False
         self.frame_budget = 1.0 / fps
         self.start = 0.0
