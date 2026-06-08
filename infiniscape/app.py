@@ -29,25 +29,25 @@ _ARROWS = {"\x1b[A": "up", "\x1b[B": "down", "\x1b[C": "right", "\x1b[D": "left"
 _MOVES = {
     "left": (-1, 0), "a": (-1, 0), "right": (1, 0), "d": (1, 0),
     "up": (0, -1), "w": (0, -1), "down": (0, 1), "s": (0, 1),
-    "q": (-1, -1), "e": (1, -1), "z": (-1, 1), "c": (1, 1),  # diagonals
 }  # fmt: skip
+_COMBINE = 0.07  # seconds: two direction keys within this window make a diagonal
 
 _HELP_LINES = [
     "  move          w a s d  ·  arrow keys",
-    "  diagonals      q e z c   (around wasd)",
+    "  diagonal       press two directions together",
     "  sea level     ,  (lower)    .  (raise)",
     "  light         [  (smaller)  ]  (larger)",
     "  trees         f",
     "  minimap       m",
     "  snapshot      p   (PNG to Preview)",
     "  help          h   (close this)",
-    "  quit          Q   ·   Esc",
+    "  quit          q   ·   Esc",
 ]
 _HELP_TITLE = " infiniscape — controls "
 
 
 class App:
-    def __init__(self, seed: int = 1337, fps: float = 30.0):
+    def __init__(self, seed: int = 1337, fps: float = 60.0):
         self.world = World(seed=seed)
         self.px = 0  # player world position in pixels; starts at the origin
         self.py = 0
@@ -64,6 +64,10 @@ class App:
         self.snap_requested = False  # 'p' exports a smooth PNG of the view
         self.tty = -1  # fd of the controlling terminal, opened in run()
         self._opened_tty = False
+        self._mx = 0  # pending movement, combined over a short window
+        self._my = 0
+        self._pend_t = 0.0
+        self._moving = False
 
     # --- input -------------------------------------------------------------
     def _read_keys(self) -> list[str]:
@@ -93,20 +97,38 @@ class App:
                 i += 1
         return tokens
 
-    def _step(self, keys: list[str]) -> None:
-        """Move once per frame. Cardinal only: the last movement key wins."""
-        mx = my = 0
+    def _step(self, keys: list[str], now: float) -> None:
+        """Combine direction keys: two within _COMBINE seconds become a diagonal.
+
+        Only the first step of a movement waits for the window; while a direction
+        is held (auto-repeating) steps fire immediately, so travel stays snappy.
+        """
         for key in keys:
             move = _MOVES.get(key)
             if move:
-                mx, my = move
+                if self._mx == 0 and self._my == 0 and not self._moving:
+                    self._pend_t = now
+                self._mx = move[0] or self._mx
+                self._my = move[1] or self._my
             else:
                 self._handle(key)
-        self.px += mx
-        self.py += my
+        if self._mx and self._my:
+            self._apply(self._mx, self._my)  # diagonal: both axes within the window
+        elif self._mx or self._my:
+            if self._moving or now - self._pend_t >= _COMBINE:
+                self._apply(self._mx, self._my)
+        else:
+            self._moving = False
+
+    def _apply(self, dx: int, dy: int) -> None:
+        self.px += dx
+        self.py += dy
+        self._mx = self._my = 0
+        self._pend_t = 0.0
+        self._moving = True
 
     def _handle(self, key: str) -> None:
-        if key in ("Q", "\x03"):
+        if key in ("q", "\x03"):
             self.running = False
         elif key == "\x1b":  # Esc closes the help modal, or quits if it is closed
             if self.show_help:
@@ -248,7 +270,7 @@ class App:
             last_sig = None
             while self.running:
                 loop_start = time.monotonic()
-                self._step(self._read_keys())
+                self._step(self._read_keys(), time.monotonic())
                 cols, rows = os.get_terminal_size(self.tty)
                 # Horizontal cells are 1px: keep the player centered, scroll every step.
                 # Vertical cells are 2px: snap the camera down to an even row so the

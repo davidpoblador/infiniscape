@@ -21,6 +21,11 @@ _HIDE, _SHOW = "\x1b[?25l", "\x1b[?25h"
 _ALT_ON, _ALT_OFF = "\x1b[?1049h", "\x1b[?1049l"
 _ARROWS = {"\x1b[A": "up", "\x1b[B": "down", "\x1b[C": "right", "\x1b[D": "left"}
 _ICE = np.array([232, 238, 245], dtype=np.float64)
+_MOVES = {
+    "up": (0, -1), "w": (0, -1), "down": (0, 1), "s": (0, 1),
+    "left": (-1, 0), "a": (-1, 0), "right": (1, 0), "d": (1, 0),
+}  # fmt: skip
+_COMBINE = 0.07  # seconds: two direction keys within this window make a diagonal
 
 
 def _sphere(lat: float, lon: float) -> np.ndarray:
@@ -130,7 +135,7 @@ def _orthonormalize(pos, fwd, right):
 
 
 class PlanetApp:
-    def __init__(self, seed: int = 1337, fps: float = 30.0):
+    def __init__(self, seed: int = 1337, fps: float = 60.0):
         self.world = PlanetWorld(seed)
         pos = _sphere(0.3, 0.0)
         east, north = _frame(pos)
@@ -142,6 +147,10 @@ class PlanetApp:
         self.running = True
         self.tty = -1
         self._opened = False
+        self._mx = 0
+        self._my = 0
+        self._pend_t = 0.0
+        self._moving = False
 
     # input
     def _read(self):
@@ -167,25 +176,16 @@ class PlanetApp:
         while data:
             data = data[os.write(self.tty, data) :]
 
-    def _step(self, keys):
-        d = self.fov * 0.06  # ground step scales with zoom
+    def _step(self, keys, now):
         for k in keys:
-            if k in ("Q", "\x03", "\x1b"):
+            mv = _MOVES.get(k)
+            if mv:
+                if self._mx == 0 and self._my == 0 and not self._moving:
+                    self._pend_t = now
+                self._mx = mv[0] or self._mx
+                self._my = mv[1] or self._my
+            elif k in ("q", "\x03", "\x1b"):
                 self.running = False
-            elif k in ("up", "w"):  # sail forward along a great circle, over the pole
-                self.pos, self.fwd = _rot(self.pos, self.fwd, d)
-            elif k in ("down", "s"):
-                self.pos, self.fwd = _rot(self.pos, self.fwd, -d)
-            elif k in ("right", "d"):
-                self.pos, self.right = _rot(self.pos, self.right, d)
-            elif k in ("left", "a"):
-                self.pos, self.right = _rot(self.pos, self.right, -d)
-            elif k in ("q", "e", "z", "c"):  # diagonals around wasd
-                dd = d * 0.7071
-                self.pos, self.fwd = _rot(self.pos, self.fwd, dd if k in ("q", "e") else -dd)
-                self.pos, self.right = _rot(
-                    self.pos, self.right, -dd if k in ("q", "z") else dd
-                )
             elif k in ("+", "="):
                 self.fov = max(0.06, self.fov * 0.85)
             elif k in ("-", "_"):
@@ -196,7 +196,26 @@ class PlanetApp:
                 self.sea_level = max(-0.45, self.sea_level - 0.02)
             elif k == "g":
                 self.show_globe = not self.show_globe
+        if self._mx and self._my:
+            self._apply(self._mx, self._my)  # diagonal: both axes within the window
+        elif self._mx or self._my:
+            if self._moving or now - self._pend_t >= _COMBINE:
+                self._apply(self._mx, self._my)
+        else:
+            self._moving = False
+
+    def _apply(self, dx, dy):
+        d = self.fov * 0.06  # ground step scales with zoom
+        if dx and dy:
+            d *= 0.7071  # equal speed on the diagonal
+        if dy:  # up (dy=-1) sails forward over the pole
+            self.pos, self.fwd = _rot(self.pos, self.fwd, -dy * d)
+        if dx:
+            self.pos, self.right = _rot(self.pos, self.right, dx * d)
         self.pos, self.fwd, self.right = _orthonormalize(self.pos, self.fwd, self.right)
+        self._mx = self._my = 0
+        self._pend_t = 0.0
+        self._moving = True
 
     # frame
     def _hud(self, cols, elev, moist, temp):
@@ -207,7 +226,7 @@ class PlanetApp:
         text = (
             f" planet  {abs(lat):.1f}°{ns} {abs(lon):.1f}°{ew}  "
             f"{biomes.name(elev, moist, temp)}  {alt:+d}m  {biomes.celsius(temp):+d}°C  "
-            f"[wasd move (wraps) · qezc diag · +/- zoom · ,. sea · g globe · Q quit] "
+            f"[wasd/arrows move (two=diagonal, wraps) · +/- zoom · ,. sea · g globe · q quit] "
         )[:cols]
         return f"\x1b[1;1H\x1b[7m{text}\x1b[0m"
 
@@ -244,7 +263,7 @@ class PlanetApp:
             last = None
             while self.running:
                 start = time.monotonic()
-                self._step(self._read())
+                self._step(self._read(), time.monotonic())
                 cols, rows = os.get_terminal_size(self.tty)
                 sig = (
                     tuple(np.round(self.pos, 4)), tuple(np.round(self.fwd, 4)),
