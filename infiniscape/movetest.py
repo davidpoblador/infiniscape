@@ -1,5 +1,5 @@
-# ABOUTME: Standalone POC to test/tune the two-key->diagonal heuristic only.
-# ABOUTME: No map drawing; logs key arrivals, gaps, and each emitted step.
+# ABOUTME: Standalone POC for the sticky-heading diagonal heuristic (no map).
+# ABOUTME: A latched direction is sustained by whichever key keeps auto-repeating.
 
 import os
 import select
@@ -13,7 +13,7 @@ _MOVES = {
     "up": (0, -1), "w": (0, -1), "down": (0, 1), "s": (0, 1),
     "left": (-1, 0), "a": (-1, 0), "right": (1, 0), "d": (1, 0),
 }  # fmt: skip
-_NAME = {(0, -1): "N", (0, 1): "S", (-1, 0): "W", (1, 0): "E",
+_NAME = {(0, 0): "·", (0, -1): "N", (0, 1): "S", (-1, 0): "W", (1, 0): "E",
          (-1, -1): "NW", (1, -1): "NE", (-1, 1): "SW", (1, 1): "SE"}  # fmt: skip
 
 
@@ -40,18 +40,18 @@ def main():
     def w(s):
         os.write(fd, s.encode())
 
-    window = 0.08  # seconds
+    window = 0.08   # seconds: two keys within this make a diagonal
+    release = 0.40  # seconds of silence before the heading clears
     x = y = 0
-    mx = my = 0
-    pend_t = 0.0
-    moving = False
-    last_key = None
+    hx = hy = 0          # current heading
+    last_active = -1.0
+    recent = []          # (move, time) within the combine window
 
     w(
-        "\r\n  diagonal heuristic POC (no map)\r\n"
-        "  press two arrows/wasd TOGETHER -> should log a DIAGONAL step.\r\n"
-        "  [ / ] shrink/grow the combine window.   r = reset position.   Ctrl-C quits.\r\n"
-        f"  window = {window * 1000:.0f} ms\r\n\r\n"
+        "\r\n  sticky-heading diagonal POC (no map)\r\n"
+        "  press two arrows TOGETHER, then KEEP THEM HELD -> should keep going diagonal.\r\n"
+        "  [ / ] window    - / = release    r reset    Ctrl-C quits\r\n"
+        f"  window={window * 1000:.0f}ms  release={release * 1000:.0f}ms\r\n\r\n"
     )
     try:
         tty.setcbreak(fd)
@@ -67,46 +67,40 @@ def main():
             for k in _tokens(data):
                 if k == "\x03":
                     raise KeyboardInterrupt
-                if k == "[":
-                    window = max(0.01, window - 0.01)
-                    w(f"  window = {window * 1000:.0f} ms\r\n")
+                if k in ("[", "]"):
+                    window = max(0.02, min(0.3, window + (0.01 if k == "]" else -0.01)))
+                    w(f"  window={window * 1000:.0f}ms\r\n")
                     continue
-                if k == "]":
-                    window = min(0.5, window + 0.01)
-                    w(f"  window = {window * 1000:.0f} ms\r\n")
+                if k in ("-", "="):
+                    release = max(0.1, min(1.0, release + (0.05 if k == "=" else -0.05)))
+                    w(f"  release={release * 1000:.0f}ms\r\n")
                     continue
                 if k == "r":
                     x = y = 0
-                    w("  position reset to 0,0\r\n")
+                    w("  reset 0,0\r\n")
                     continue
                 mv = _MOVES.get(k)
                 if not mv:
                     continue
-                gap = "" if last_key is None else f"  (+{(now - last_key) * 1000:.0f}ms)"
-                last_key = now
-                w(f"  key {_NAME[mv]:>2}{gap}\r\n")
-                if mx == 0 and my == 0 and not moving:
-                    pend_t = now
-                mx = mv[0] or mx
-                my = mv[1] or my
-
-            if mx and my:
-                x += mx
-                y += my
-                w(f"    -> *** DIAGONAL {_NAME[(mx, my)]} ***   pos {x},{y}\r\n")
-                mx = my = 0
-                moving = True
-            elif mx or my:
-                if moving or now - pend_t >= window:
-                    waited = (now - pend_t) * 1000
-                    x += mx
-                    y += my
-                    tag = "held" if moving else f"waited {waited:.0f}ms"
-                    w(f"    -> cardinal {_NAME[(mx, my)]}  ({tag})   pos {x},{y}\r\n")
-                    mx = my = 0
-                    moving = True
-            else:
-                moving = False
+                gap = "" if last_active < 0 else f" (+{(now - last_active) * 1000:.0f}ms)"
+                last_active = now
+                recent = [(m, t) for m, t in recent if now - t <= window]
+                recent.append((mv, now))
+                cx = cy = 0
+                for m, _ in recent:
+                    cx = m[0] or cx
+                    cy = m[1] or cy
+                if hx == 0 and hy == 0:
+                    hx, hy = cx, cy  # start a fresh heading
+                else:
+                    hx = cx or hx  # a silent axis keeps its latched value -> diagonal holds
+                    hy = cy or hy
+                x += hx
+                y += hy
+                w(f"  key {_NAME[mv]:>2}{gap}  ->  {_NAME[(hx, hy)]:>2}  pos {x},{y}\r\n")
+            if last_active >= 0 and (hx or hy) and now - last_active >= release:
+                hx = hy = 0
+                w("  -- released, heading cleared --\r\n")
     except KeyboardInterrupt:
         pass
     finally:
