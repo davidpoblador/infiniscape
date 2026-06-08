@@ -123,7 +123,7 @@ class App:
     def _top_bar(self, cols: int, stats: tuple) -> str:
         elev, moist, temp = stats
         _, clock, date = self._clock()
-        height = round((elev - 0.50) * 8000)  # metres relative to the shoreline (sea = 0)
+        height = round((elev - 0.50) * 1024)  # height units, -512..512, shore = 0
         left = (
             f" @ {int(self.px):+d},{int(self.py):+d}  "
             f"{biomes.name(elev, moist, temp)}  {height:+d}m  {biomes.celsius(temp):+d}°C  "
