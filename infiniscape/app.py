@@ -53,16 +53,23 @@ class App:
         self.start = 0.0
         self.start_dt = datetime.now(timezone.utc)
         self.running = True
+        self.tty = -1  # fd of the controlling terminal, opened in run()
+        self._opened_tty = False
 
     # --- input -------------------------------------------------------------
     def _read_keys(self) -> list[str]:
         chunks: list[str] = []
-        while select.select([sys.stdin], [], [], 0)[0]:
-            data = os.read(sys.stdin.fileno(), 64)
+        while select.select([self.tty], [], [], 0)[0]:
+            data = os.read(self.tty, 64)
             if not data:
                 break
             chunks.append(data.decode("utf-8", "ignore"))
         return self._tokenize("".join(chunks))
+
+    def _write(self, text: str) -> None:
+        data = text.encode()
+        while data:
+            data = data[os.write(self.tty, data) :]
 
     @staticmethod
     def _tokenize(data: str) -> list[str]:
@@ -184,17 +191,22 @@ class App:
         frame = render(rgb, chars, fg) + self._top_bar(cols, stats)
         if self.show_help:
             frame += self._help_modal(cols, rows)
-        sys.stdout.write(frame)
-        sys.stdout.flush()
+        self._write(frame)
 
     def run(self) -> None:
-        fd = sys.stdin.fileno()
-        old = termios.tcgetattr(fd)
+        # Talk to the controlling terminal directly so it works even when stdin or
+        # stdout are redirected (a common cause of "Inappropriate ioctl for device").
+        try:
+            self.tty = os.open("/dev/tty", os.O_RDWR | os.O_NOCTTY)
+            self._opened_tty = True
+        except OSError:
+            self.tty = sys.stdin.fileno()
+            self._opened_tty = False
+        old = termios.tcgetattr(self.tty)
         signal.signal(signal.SIGWINCH, lambda *_: None)  # interrupt select on resize
         try:
-            tty.setcbreak(fd)
-            sys.stdout.write(_ALT_SCREEN_ON + _HIDE_CURSOR + "\x1b[2J")
-            sys.stdout.flush()
+            tty.setcbreak(self.tty)
+            self._write(_ALT_SCREEN_ON + _HIDE_CURSOR + "\x1b[2J")
             self.start = time.monotonic()
             self.start_dt = datetime.now(timezone.utc).replace(
                 hour=0, minute=0, second=0, microsecond=0
@@ -203,7 +215,7 @@ class App:
             while self.running:
                 loop_start = time.monotonic()
                 self._step(self._read_keys())
-                cols, rows = os.get_terminal_size()
+                cols, rows = os.get_terminal_size(self.tty)
                 # Horizontal cells are 1px: keep the player centered, scroll every step.
                 # Vertical cells are 2px: snap the camera down to an even row so the
                 # player rides the top/bottom half of its cell, and the world only
@@ -226,9 +238,10 @@ class App:
                 if elapsed < self.frame_budget:
                     time.sleep(self.frame_budget - elapsed)
         finally:
-            sys.stdout.write(_SHOW_CURSOR + _ALT_SCREEN_OFF)
-            sys.stdout.flush()
-            termios.tcsetattr(fd, termios.TCSADRAIN, old)
+            self._write(_SHOW_CURSOR + _ALT_SCREEN_OFF)
+            termios.tcsetattr(self.tty, termios.TCSADRAIN, old)
+            if self._opened_tty:
+                os.close(self.tty)
 
 
 def main() -> None:
