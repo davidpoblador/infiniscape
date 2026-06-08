@@ -36,13 +36,13 @@ def compose(
     features: bool = True,
     minimap: bool = True,
     minimap_factor: float = 12.0,
-) -> tuple[np.ndarray, np.ndarray | None, np.ndarray | None]:
+) -> tuple[np.ndarray, np.ndarray | None, np.ndarray | None, tuple]:
     """Return (rgb pixels, sprite chars, sprite colors) for one frame.
 
     rgb is (rows*2, cols, 3); chars/fg are (rows, cols) cell grids or None.
     """
     h_px, w_px = rows * 2, cols
-    rgb, elev, moist = world.sample(w_px, h_px, cam_x, cam_y, scale, sea_level)
+    rgb, elev, moist, temp = world.sample(w_px, h_px, cam_x, cam_y, scale, sea_level)
 
     bright, halo = _masks(h_px, w_px, light_radius, shadow_radius, shadow_depth)
     f = rgb.astype(np.float64)
@@ -59,7 +59,7 @@ def compose(
     chars = fg = None
     if features:
         chars, fg = build_features(
-            elev[0::2], moist[0::2], math.floor(cam_x), math.floor(cam_y)
+            elev[0::2], moist[0::2], math.floor(cam_x), math.floor(cam_y / 2)
         )
         cell_bright = bright[0::2, :, 0]
         fg = np.clip(fg.astype(np.float64) * cell_bright[..., None], 0, 255).astype(
@@ -82,7 +82,8 @@ def compose(
             minimap_factor,
         )
 
-    return disp, chars, fg
+    stats = (float(elev[py, px]), float(moist[py, px]), float(temp[py, px]))
+    return disp, chars, fg, stats
 
 
 def _draw_minimap(

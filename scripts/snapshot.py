@@ -30,7 +30,7 @@ def render_png(path: str, **kw) -> None:
     cols = kw.pop("cols")
     rows = kw.pop("rows")
     seed = kw.pop("seed", 1337)
-    rgb, chars, fg = compose(World(seed), cols, rows, **kw)
+    rgb, chars, fg, _ = compose(World(seed), cols, rows, **kw)
 
     half = CH // 2
     base = np.repeat(np.repeat(rgb, half, axis=0), CW, axis=1)
@@ -114,6 +114,20 @@ if __name__ == "__main__":
         cam_y=300,
         scale=0.012,
         sea_level=-0.04,
+        light_radius=2000.0,
+        features=True,
+        minimap=True,
+    )
+    # a mountain range with ridges, snow, and rivers running off it
+    render_png(
+        f"{out}/05_mountains.png",
+        cols=220,
+        rows=64,
+        seed=7,
+        cam_x=-800,
+        cam_y=-800,
+        scale=0.02,
+        sea_level=0.0,
         light_radius=2000.0,
         features=True,
         minimap=True,

@@ -72,3 +72,26 @@ def fbm(
         amp *= persistence
         freq *= lacunarity
     return total / norm
+
+
+def ridged_fbm(
+    x: np.ndarray,
+    y: np.ndarray,
+    perm: np.ndarray,
+    octaves: int = 4,
+    persistence: float = 0.5,
+    lacunarity: float = 2.0,
+) -> np.ndarray:
+    """Ridged multifractal noise in ~[0,1]; sharp crests where Perlin crosses 0."""
+    total = np.zeros_like(x)
+    amp = 1.0
+    freq = 1.0
+    norm = 0.0
+    for _ in range(octaves):
+        r = 1.0 - np.abs(perlin(x * freq, y * freq, perm))
+        r *= r
+        total += amp * r
+        norm += amp
+        amp *= persistence
+        freq *= lacunarity
+    return total / norm

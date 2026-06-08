@@ -1,5 +1,5 @@
 # ABOUTME: Interactive terminal loop: terminal setup, input, camera, drawing.
-# ABOUTME: Steers a player across the world and composes each frame to draw.
+# ABOUTME: Steers a player, shows a status bar with clock, and a help modal.
 
 import os
 import select
@@ -9,6 +9,7 @@ import termios
 import time
 import tty
 
+from . import biomes
 from .renderer import render
 from .scene import compose
 from .world import World
@@ -25,6 +26,18 @@ _MOVES = {
 }  # fmt: skip
 _DIAG = 0.7071067811865476  # 1 / sqrt(2)
 
+_HELP_LINES = [
+    "  move          w a s d  ·  arrow keys",
+    "  diagonal      press two keys together",
+    "  sea level     ,  (lower)    .  (raise)",
+    "  light         [  (smaller)  ]  (larger)",
+    "  trees         f",
+    "  minimap       m",
+    "  help          h   (close this)",
+    "  quit          q   ·   Esc",
+]
+_HELP_TITLE = " infiniscape — controls "
+
 
 class App:
     def __init__(self, seed: int = 1337, fps: float = 30.0):
@@ -35,9 +48,10 @@ class App:
         self.sea_level = 0.0  # waterline offset: >0 floods, <0 exposes land
         self.light_radius = 26.0  # lit radius around the player, in pixels
         self.show_features = True
-        self.show_minimap = True
-        self.show_hud = True
+        self.show_minimap = False
+        self.show_help = False
         self.frame_budget = 1.0 / fps
+        self.start = 0.0
         self.running = True
 
     # --- input -------------------------------------------------------------
@@ -64,12 +78,7 @@ class App:
         return tokens
 
     def _step(self, keys: list[str]) -> None:
-        """Move once per frame from the keys held this frame.
-
-        Movement keys are summed and clamped to a single pixel per axis, so two
-        direction keys pressed together make one diagonal step and a held key
-        (auto-repeated by the terminal) moves steadily while down.
-        """
+        """Move once per frame from the keys held this frame (diagonals combine)."""
         dx = dy = 0
         for key in keys:
             move = _MOVES.get(key)
@@ -79,9 +88,7 @@ class App:
             else:
                 self._handle(key)
         sx, sy = max(-1, min(1, dx)), max(-1, min(1, dy))
-        if (
-            sx and sy
-        ):  # normalize so a diagonal step is the same speed as a straight one
+        if sx and sy:  # keep diagonal speed equal to a straight step
             self.px += sx * _DIAG
             self.py += sy * _DIAG
         else:
@@ -89,8 +96,13 @@ class App:
             self.py += sy
 
     def _handle(self, key: str) -> None:
-        if key in ("q", "\x03", "\x1b"):
+        if key in ("q", "\x03"):
             self.running = False
+        elif key == "\x1b":  # Esc closes the help modal, or quits if it is closed
+            if self.show_help:
+                self.show_help = False
+            else:
+                self.running = False
         elif key == "[":
             self.light_radius = max(8.0, self.light_radius - 4.0)
         elif key == "]":
@@ -104,35 +116,57 @@ class App:
         elif key == "m":
             self.show_minimap = not self.show_minimap
         elif key == "h":
-            self.show_hud = not self.show_hud
+            self.show_help = not self.show_help
+
+    # --- clock -------------------------------------------------------------
+    def _clock(self) -> tuple[int, str, str]:
+        """Game time: one real second is one in-game minute. Returns (min, hh:mm, date)."""
+        total = int(time.monotonic() - self.start)  # in-game minutes elapsed
+        hh, mm = (total // 60) % 24, total % 60
+        days = total // 1440
+        year, month, day = days // 360 + 1, (days % 360) // 30 + 1, days % 30 + 1
+        return total, f"{hh:02d}:{mm:02d}", f"{year:04d}-{month:02d}-{day:02d}"
 
     # --- frame -------------------------------------------------------------
-    def _hud(self, cols: int, rows: int) -> str:
-        text = (
-            f" infiniscape  @ {int(self.px):+d},{int(self.py):+d}  "
-            f"light {int(self.light_radius)}  sea {self.sea_level:+.2f}  "
-            f"[wasd/arrows move (diagonals too) · ,. sea · [] light · f trees · m map · h hud · q quit] "
-        )[:cols]
-        return f"\x1b[1;1H\x1b[7m{text}\x1b[0m"
+    def _top_bar(self, cols: int, stats: tuple) -> str:
+        elev, moist, temp = stats
+        _, clock, date = self._clock()
+        left = (
+            f" @ {int(self.px):+d},{int(self.py):+d}  "
+            f"{biomes.name(elev, moist, temp)}  {biomes.celsius(temp):+d}°C  "
+            f"{clock}  {date} "
+        )
+        right = "(h)elp "
+        pad = max(1, cols - len(left) - len(right) + 1)  # +1: °C is one display column
+        bar = (left + " " * pad + right)[:cols]
+        return f"\x1b[1;1H\x1b[7m{bar}\x1b[0m"
 
-    def _signature(self, cols: int, rows: int) -> tuple:
-        """Everything that affects the frame; identical -> no need to redraw."""
-        return (
-            round(self.px, 3),
-            round(self.py, 3),
-            self.sea_level,
-            self.light_radius,
-            self.show_features,
-            self.show_minimap,
-            self.show_hud,
-            cols,
-            rows,
+    def _help_modal(self, cols: int, rows: int) -> str:
+        inner = max(len(_HELP_TITLE), max(len(s) for s in _HELP_LINES)) + 2
+        body = [
+            _HELP_TITLE.center(inner),
+            "─" * inner,
+            *[s.ljust(inner) for s in _HELP_LINES],
+        ]
+        box = ["┌" + "─" * inner + "┐"]
+        box += [
+            ("├" if row == "─" * inner else "│")
+            + row
+            + ("┤" if row == "─" * inner else "│")
+            for row in body
+        ]
+        box += ["└" + "─" * inner + "┘"]
+        if rows < len(box) + 2 or cols < inner + 4:
+            return ""  # no room for the modal
+        r0 = (rows - len(box)) // 2 + 1
+        c0 = (cols - (inner + 2)) // 2 + 1
+        style = "\x1b[48;2;26;28;40m\x1b[38;2;236;236;242m"
+        return "".join(
+            f"\x1b[{r0 + i};{c0}H{style}{row}\x1b[0m" for i, row in enumerate(box)
         )
 
-    def _draw(self, cols: int, rows: int) -> None:
-        cam_x = self.px - cols / 2  # center the camera on the player
-        cam_y = self.py - rows
-        rgb, chars, fg = compose(
+    def _draw(self, cols: int, rows: int, cam_x: float, cam_y: float) -> None:
+        rgb, chars, fg, stats = compose(
             self.world,
             cols,
             rows,
@@ -144,9 +178,9 @@ class App:
             features=self.show_features,
             minimap=self.show_minimap,
         )
-        frame = render(rgb, chars, fg)
-        if self.show_hud:
-            frame += self._hud(cols, rows)
+        frame = render(rgb, chars, fg) + self._top_bar(cols, stats)
+        if self.show_help:
+            frame += self._help_modal(cols, rows)
         sys.stdout.write(frame)
         sys.stdout.flush()
 
@@ -158,16 +192,26 @@ class App:
             tty.setcbreak(fd)
             sys.stdout.write(_ALT_SCREEN_ON + _HIDE_CURSOR + "\x1b[2J")
             sys.stdout.flush()
+            self.start = time.monotonic()
             last_sig = None
             while self.running:
-                start = time.monotonic()
+                loop_start = time.monotonic()
                 self._step(self._read_keys())
                 cols, rows = os.get_terminal_size()
-                sig = self._signature(cols, rows)
+                # snap the camera to whole cells (2px) so scrolling steps by one
+                # full block and sprites stay locked to the terrain
+                cam_x = round((self.px - cols / 2) / 2) * 2
+                cam_y = round((self.py - rows) / 2) * 2
+                minute = int(time.monotonic() - self.start)
+                sig = (
+                    cam_x, cam_y, self.sea_level, self.light_radius,
+                    self.show_features, self.show_minimap, self.show_help,
+                    minute, cols, rows,
+                )  # fmt: skip
                 if sig != last_sig and cols >= 2 and rows >= 1:
-                    self._draw(cols, rows)
+                    self._draw(cols, rows, cam_x, cam_y)
                     last_sig = sig
-                elapsed = time.monotonic() - start
+                elapsed = time.monotonic() - loop_start
                 if elapsed < self.frame_budget:
                     time.sleep(self.frame_budget - elapsed)
         finally:

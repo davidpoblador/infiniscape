@@ -21,11 +21,12 @@ def build_features(
     """Return (chars, fg) cell grids: a glyph ('' = none) and its color per cell.
 
     elevation / moisture are per-cell fields in [0,1]; base_x / base_y are the
-    world cell coordinates of the top-left cell, so sprites stay put as you move.
+    world-cell coordinates of the top-left cell (x in pixels, y in 2px cells), so
+    sprites stay locked to the world as the camera scrolls in either axis.
     """
     rows, cols = elevation.shape
     ix = base_x + np.arange(cols)
-    iy = base_y + 2 * np.arange(rows)  # cells span two pixel rows
+    iy = base_y + np.arange(rows)
     gx, gy = np.meshgrid(ix, iy)
     r1 = _hash01(gx, gy, 1)
     r2 = _hash01(gx, gy, 2)
@@ -45,7 +46,9 @@ def build_features(
 
     # forests on vegetated slopes, denser where it is wetter
     veg = (e >= 0.55) & (e < 0.84)
-    density = np.where(mo > 0.66, 0.42, np.where(mo > 0.33, 0.22, 0.05))
+    density = np.where(
+        mo > 0.62, 0.34, np.where(mo > 0.42, 0.16, np.where(mo > 0.24, 0.04, 0.0))
+    )
     wooded = veg & (r1 < density)
     place(wooded & (r2 < 0.5), "♠", (28, 74, 38))
     place(wooded & (r2 >= 0.5), "♣", (40, 96, 50))
