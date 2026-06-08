@@ -11,6 +11,7 @@ class World:
     """A seeded, infinite terrain that can be sampled for any camera window."""
 
     def __init__(self, seed: int = 1337, octaves: int = 5):
+        self.seed = seed
         self.perm = make_perm(seed)
         self.moist_perm = make_perm(seed + 7919)  # independent biome moisture
         self.octaves = octaves
@@ -24,11 +25,12 @@ class World:
         cam_y: float,
         scale: float,
         sea_level: float = 0.0,
-    ) -> np.ndarray:
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Render a (height, width, 3) uint8 grid for the given camera window.
 
         cam_x / cam_y are offsets in pixel units; scale is noise units per pixel.
         sea_level raises (>0, floods land) or lowers (<0, exposes land) the water.
+        Returns (rgb, elevation, moisture); the fields drive sprites and the map.
         """
         xs = np.arange(width) + cam_x
         ys = np.arange(height) + cam_y
@@ -47,7 +49,8 @@ class World:
 
         rgb = colorize(h, moist)
         rgb = self._shade(h, rgb)
-        return np.clip(rgb, 0, 255).astype(np.uint8)
+        rgb = np.clip(rgb, 0, 255).astype(np.uint8)
+        return rgb, h, moist
 
     def _shade(self, h: np.ndarray, rgb: np.ndarray) -> np.ndarray:
         """Brighten slopes facing the light and darken those away from it."""
