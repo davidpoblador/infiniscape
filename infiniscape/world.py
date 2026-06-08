@@ -73,7 +73,7 @@ class World:
         # field) but suppressed on convex high ground, so they sit in valleys and
         # drain toward the coast instead of forming closed rings on hilltops.
         channel = fbm(xw * 1.1 + 200.0, yw * 1.1 + 200.0, p, octaves=2)
-        width = 0.012 + 0.05 * (1.0 - elev)
+        width = 0.020 + 0.075 * (1.0 - elev)
         line = 1.0 - _smoothstep(0.0, width, np.abs(channel))
 
         dd = 0.5
