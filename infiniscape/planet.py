@@ -170,7 +170,7 @@ class PlanetApp:
     def _step(self, keys):
         d = self.fov * 0.06  # ground step scales with zoom
         for k in keys:
-            if k in ("q", "\x03", "\x1b"):
+            if k in ("Q", "\x03", "\x1b"):
                 self.running = False
             elif k in ("up", "w"):  # sail forward along a great circle, over the pole
                 self.pos, self.fwd = _rot(self.pos, self.fwd, d)
@@ -180,6 +180,12 @@ class PlanetApp:
                 self.pos, self.right = _rot(self.pos, self.right, d)
             elif k in ("left", "a"):
                 self.pos, self.right = _rot(self.pos, self.right, -d)
+            elif k in ("q", "e", "z", "c"):  # diagonals around wasd
+                dd = d * 0.7071
+                self.pos, self.fwd = _rot(self.pos, self.fwd, dd if k in ("q", "e") else -dd)
+                self.pos, self.right = _rot(
+                    self.pos, self.right, -dd if k in ("q", "z") else dd
+                )
             elif k in ("+", "="):
                 self.fov = max(0.06, self.fov * 0.85)
             elif k in ("-", "_"):
@@ -201,7 +207,7 @@ class PlanetApp:
         text = (
             f" planet  {abs(lat):.1f}°{ns} {abs(lon):.1f}°{ew}  "
             f"{biomes.name(elev, moist, temp)}  {alt:+d}m  {biomes.celsius(temp):+d}°C  "
-            f"[wasd move (wraps over poles) · +/- zoom · ,. sea · g globe · q quit] "
+            f"[wasd move (wraps) · qezc diag · +/- zoom · ,. sea · g globe · Q quit] "
         )[:cols]
         return f"\x1b[1;1H\x1b[7m{text}\x1b[0m"
 

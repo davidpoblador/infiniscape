@@ -29,17 +29,19 @@ _ARROWS = {"\x1b[A": "up", "\x1b[B": "down", "\x1b[C": "right", "\x1b[D": "left"
 _MOVES = {
     "left": (-1, 0), "a": (-1, 0), "right": (1, 0), "d": (1, 0),
     "up": (0, -1), "w": (0, -1), "down": (0, 1), "s": (0, 1),
+    "q": (-1, -1), "e": (1, -1), "z": (-1, 1), "c": (1, 1),  # diagonals
 }  # fmt: skip
 
 _HELP_LINES = [
     "  move          w a s d  ·  arrow keys",
+    "  diagonals      q e z c   (around wasd)",
     "  sea level     ,  (lower)    .  (raise)",
     "  light         [  (smaller)  ]  (larger)",
     "  trees         f",
     "  minimap       m",
     "  snapshot      p   (PNG to Preview)",
     "  help          h   (close this)",
-    "  quit          q   ·   Esc",
+    "  quit          Q   ·   Esc",
 ]
 _HELP_TITLE = " infiniscape — controls "
 
@@ -104,7 +106,7 @@ class App:
         self.py += my
 
     def _handle(self, key: str) -> None:
-        if key in ("q", "\x03"):
+        if key in ("Q", "\x03"):
             self.running = False
         elif key == "\x1b":  # Esc closes the help modal, or quits if it is closed
             if self.show_help:

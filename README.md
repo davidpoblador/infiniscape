@@ -34,16 +34,17 @@ Ghostty, WezTerm, modern Terminal.app, VS Code).
 
 | Key | Action |
 | --- | --- |
-| arrows / `wasd` | move (one cardinal step at a time) |
+| arrows / `wasd` | move (one step) |
+| `q` `e` `z` `c` | move diagonally (corners around wasd) |
 | `,` / `.` | lower / raise the sea level |
 | `[` / `]` | shrink / grow the light radius |
 | `f` | toggle sprites |
 | `m` | toggle the minimap |
 | `p` | save a smooth high-res PNG of the location and open it in Preview |
 | `h` | open / close the help modal |
-| `q` / `Esc` | quit |
+| `Q` / `Esc` | quit |
 
-Movement is cardinal (terminals can't reliably report two keys at once). The status bar shows your coordinates, the current biome and temperature, and a
+Diagonals use dedicated keys (`q e z c`) because terminals can't reliably report two keys held at once. The status bar shows your coordinates, the current biome and temperature, and a
 clock and date (one real second is one in-game minute). You start at the world
 origin `(0,0)`; coordinates go negative in every direction.
 
@@ -81,10 +82,11 @@ uvx --from git+https://github.com/davidpoblador/infiniscape infiniscape-planet
 | Key | Action |
 | --- | --- |
 | arrows / `wasd` | walk the surface (wraps around) |
+| `q` `e` `z` `c` | walk diagonally |
 | `+` / `-` | zoom the field of view |
 | `,` / `.` | lower / raise sea level |
 | `g` | toggle the globe |
-| `q` / `Esc` | quit |
+| `Q` / `Esc` | quit |
 
 ## Snapshots
 
