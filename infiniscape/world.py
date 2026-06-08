@@ -69,18 +69,31 @@ class World:
         ridges = ridged_fbm(xw * 1.3 + 50.0, yw * 1.3 + 50.0, p, octaves=4)
         elev = np.clip(elev + ridges * _smoothstep(0.55, 0.85, elev) * 0.40, 0.0, 1.0)
 
-        # rivers: the zero-set of a warped channel, widening toward the coast,
-        # gated to land and to large basin regions, then carved into the height
-        channel = fbm(xw * 1.1 + 200.0, yw * 1.1 + 200.0, p, octaves=3)
+        # rivers: connected meandering channels (the zero-set of a warped noise
+        # field) but suppressed on convex high ground, so they sit in valleys and
+        # drain toward the coast instead of forming closed rings on hilltops.
+        channel = fbm(xw * 1.1 + 200.0, yw * 1.1 + 200.0, p, octaves=2)
+        width = 0.012 + 0.05 * (1.0 - elev)
+        line = 1.0 - _smoothstep(0.0, width, np.abs(channel))
+
+        dd = 0.5
+
+        def hyd(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+            return fbm(a * 0.6 + 500.0, b * 0.6 + 500.0, p, octaves=1)
+
+        depth = (
+            0.25
+            * (hyd(xw - dd, yw) + hyd(xw + dd, yw) + hyd(xw, yw - dd) + hyd(xw, yw + dd))
+            - hyd(xw, yw)
+        )
+        valley = _smoothstep(-0.02, 0.05, depth)  # 0 on convex hilltops, 1 in valleys
         basins = _smoothstep(
             0.25,
             0.55,
             (fbm(xw * 0.22 + 400.0, yw * 0.22 + 400.0, p, octaves=2) + 1) * 0.5,
         )
-        width = 0.012 + 0.05 * (1.0 - elev)
-        line = 1.0 - _smoothstep(0.0, width, np.abs(channel))
         land = _smoothstep(0.30, 0.36, elev) * (1.0 - _smoothstep(0.82, 0.90, elev))
-        river = line * basins * land
+        river = line * valley * basins * land
         elev = np.clip(elev - river * 0.07, 0.0, 1.0)
 
         # moisture: its own field, but wetter along the rivers
